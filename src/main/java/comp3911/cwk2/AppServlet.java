@@ -1,5 +1,7 @@
 package comp3911.cwk2;
 
+import org.mindrot.jbcrypt.BCrypt;
+
 import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
@@ -27,11 +29,39 @@ import freemarker.template.TemplateExceptionHandler;
 public class AppServlet extends HttpServlet {
 
   private static final String CONNECTION_URL = "jdbc:sqlite:db.sqlite3";
-  private static final String AUTH_QUERY = "select * from user where username = ? and password = ?";
+  private static final String AUTH_QUERY = "select password from user where username = ?";
   private static final String SEARCH_QUERY = "select * from patient where surname='%s' collate nocase";
 
   private final Configuration fm = new Configuration(Configuration.VERSION_2_3_28);
   private Connection database;
+
+  // UNCOMMENT TO HASH THE PLAIN TEXT PASSWORD (if hashed already, then don't)
+  // After hashing, comment this function and caller function back.
+  
+  // private static final String GET_ALL_USERS = "select username, password from user";
+  // private static final String UPDATE_PASSWORD = "update user set password = ? where username = ?";
+
+  // private void hashExistingPasswords() throws SQLException {
+  //   List<Map<String, String>> users = new ArrayList<>();
+  //   try (Statement stmt = database.createStatement()) {
+  //       ResultSet results = stmt.executeQuery(GET_ALL_USERS);
+  //       while (results.next()) {
+  //           Map<String, String> user = new HashMap<>();
+  //           user.put("username", results.getString("username"));
+  //           user.put("password", results.getString("password"));
+  //           users.add(user);
+  //       }
+  //   }
+
+  //   try (PreparedStatement updateStmt = database.prepareStatement(UPDATE_PASSWORD)) {
+  //       for (Map<String, String> user : users) {
+  //           String hashedPassword = hashPass(user.get("password"));
+  //           updateStmt.setString(1, hashedPassword);
+  //           updateStmt.setString(2, user.get("username"));
+  //           updateStmt.executeUpdate();
+  //       }
+  //     }
+  //   }
 
   @Override
   public void init() throws ServletException {
@@ -55,6 +85,9 @@ public class AppServlet extends HttpServlet {
   private void connectToDatabase() throws ServletException {
     try {
       database = DriverManager.getConnection(CONNECTION_URL);
+      //hashExistingPasswords();
+      // uncomment to hash the password
+      // comment this caller back after hashing
     }
     catch (SQLException error) {
       throw new ServletException(error.getMessage());
@@ -103,12 +136,29 @@ public class AppServlet extends HttpServlet {
     }
   }
 
+  private String hashPass(String plainTextPass) {
+    return BCrypt.hashpw(plainTextPass, BCrypt.gensalt(12));
+  }
+
+  private boolean checkPass(String plainTextPass, String hashedPass) {
+    try {
+      return BCrypt.checkpw(plainTextPass, hashedPass);
+    } catch (IllegalArgumentException e) {
+      return false;
+    }
+  }
+
   private boolean authenticated(String username, String password) throws SQLException {
     try (PreparedStatement stmt = database.prepareStatement(AUTH_QUERY)) {
       stmt.setString(1, username);
-      stmt.setString(2, password);
-      ResultSet results = stmt.executeQuery();
-      return results.next();
+
+      try (ResultSet results = stmt.executeQuery()) {
+        if (results.next()) {
+          String hashed = results.getString("password");
+          return checkPass(password, hashed);
+        }
+      }
+      return false;
     }
   }
 
