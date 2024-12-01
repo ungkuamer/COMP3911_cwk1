@@ -114,9 +114,9 @@ public class AppServlet extends HttpServlet {
 
   private List<Record> searchResults(String surname) throws SQLException {
     List<Record> records = new ArrayList<>();
-    String query = String.format(SEARCH_QUERY, surname);
-    try (Statement stmt = database.createStatement()) {
-      ResultSet results = stmt.executeQuery(query);
+    try (PreparedStatement stmt = database.prepareStatement(String.format(SEARCH_QUERY, surname))) {
+      stmt.setString(1, surname);
+      ResultSet results = stmt.executeQuery();
       while (results.next()) {
         Record rec = new Record();
         rec.setSurname(results.getString(2));
