@@ -23,6 +23,8 @@ import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import freemarker.template.TemplateExceptionHandler;
 
+import main.java.comp3911.cwk2.RateLimiter;
+
 @SuppressWarnings("serial")
 public class AppServlet extends HttpServlet {
 
@@ -82,6 +84,13 @@ public class AppServlet extends HttpServlet {
     String username = request.getParameter("username");
     String password = request.getParameter("password");
     String surname = request.getParameter("surname");
+
+    // Rate limmiting applied
+    if (!rateLimiter.isAllowed(userIP)) {
+      response.setStatus(429); // HTTP 429 Too Many Requests
+      response.getWriter().write("Too many requests. Please try again later.");
+      return; // Stop further processing
+    }
 
     try {
       if (authenticated(username, password)) {
