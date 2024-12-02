@@ -1,44 +1,46 @@
 package main.java.comp3911.cwk2;
 
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.Map;
-import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class RateLimiter {
-    private static final int MAXIMUM_REQUESTS = 5; 
-    private static final long TIME_WINDOW = 60_000; 
+    private static final int MAX_ATTEMPTS = 5; // Maximum allowed failed attempts
 
-    private final Map<String, long[]> userRequestLog = new HashMap<>();
+    // Maps to track attempts and blocked users by username
+    private final ConcurrentHashMap<String, Integer> attempts = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Boolean> blockedUsers = new ConcurrentHashMap<>();
 
-    public boolean isAllowed(String key) {
+    // Check if a username is allowed
+    public boolean isAllowed(String username) {
+        // Check if the username is permanently blocked
+        return !blockedUsers.getOrDefault(username, false);
+    }
 
-        long now = System.currentTimeMillis();
-
-        // Ensure the user has a request log initialized
-        userRequestLog.putIfAbsent(key, new long[MAXIMUM_REQUESTS]);
-        
-        // Get the request log for the user
-        long[] timestamps = userRequestLog.get(key);
-
-        // Count valid requests in the time window
-        int validRequestCount = 0;
-        for (long timestamp : timestamps) {
-            if (now - timestamp <= TIME_WINDOW) {
-                validRequestCount++;
-            }
+    // Record a failed login attempt
+    public void recordFailure(String username) {
+        if (blockedUsers.getOrDefault(username, false)) {
+            return; // Do nothing if user is already blocked
         }
-        // Check if the user can make another request
-        if (validRequestCount < MAXIMUM_REQUESTS) {
-            // Add the current request to the log
-            for (int i = 0; i < timestamps.length; i++) {
-                if (now - timestamps[i] > TIME_WINDOW) { // Replace the oldest/expired timestamp
-                    timestamps[i] = now;
-                    break;
-                }
-            }
-            return true; // Request is allowed
+
+        int failedAttempts = attempts.getOrDefault(username, 0) + 1;
+        attempts.put(username, failedAttempts);
+
+        if (failedAttempts >= MAX_ATTEMPTS) {
+            blockedUsers.put(username, true); // Permanently block the username
+            attempts.remove(username); // Clean up attempts tracking
         }
-        return false; // Rate limit exceeded
+    }
+
+    // Reset attempts after successful authentication
+    public void resetAttempts(String username) {
+        if (blockedUsers.getOrDefault(username, false)) {
+            return; // Do not reset if the username is permanently blocked
+        }
+
+        attempts.remove(username); // Reset count
+    }
+
+    // Check if a username is blocked
+    public boolean isBlocked(String username) {
+        return blockedUsers.getOrDefault(username, false);
     }
 }
