@@ -6,7 +6,6 @@ import java.io.File;
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -14,6 +13,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Arrays;
 
 import javax.servlet.ServletException;
 import javax.servlet.http.HttpServlet;
@@ -24,6 +24,8 @@ import freemarker.template.Configuration;
 import freemarker.template.Template;
 import freemarker.template.TemplateException;
 import freemarker.template.TemplateExceptionHandler;
+import main.java.comp3911.cwk2.RateLimiter;
+
 
 @SuppressWarnings("serial")
 public class AppServlet extends HttpServlet {
@@ -31,6 +33,7 @@ public class AppServlet extends HttpServlet {
   private static final String CONNECTION_URL = "jdbc:sqlite:db.sqlite3";
   private static final String AUTH_QUERY = "select password from user where username = ?";
   private static final String SEARCH_QUERY = "select * from patient where surname='%s' collate nocase";
+  private final RateLimiter rateLimiter = new RateLimiter();
 
   private final Configuration fm = new Configuration(Configuration.VERSION_2_3_28);
   private Connection database;
@@ -110,14 +113,24 @@ public class AppServlet extends HttpServlet {
 
   @Override
   protected void doPost(HttpServletRequest request, HttpServletResponse response)
-   throws ServletException, IOException {
+    throws ServletException, IOException {
      // Get form parameters
+ 
     String username = request.getParameter("username");
     String password = request.getParameter("password");
     String surname = request.getParameter("surname");
 
+    // Check if user is blocked
+    if (!rateLimiter.isAllowed(username)) {
+        response.setStatus(403); // HTTP 403 Forbidden
+        response.getWriter().write("Your account has been blocked due to repeated failed login attempts. Please contact the IT Services");
+        return;
+    }
+
+
     try {
       if (authenticated(username, password)) {
+        rateLimiter.resetAttempts(username); // Reset attempts
         // Get search results and merge with template
         Map<String, Object> model = new HashMap<>();
         model.put("records", searchResults(surname));
@@ -125,6 +138,7 @@ public class AppServlet extends HttpServlet {
         template.process(model, response.getWriter());
       }
       else {
+        rateLimiter.recordFailure(username); // record invalid attemp
         Template template = fm.getTemplate("invalid.html");
         template.process(null, response.getWriter());
       }
@@ -164,9 +178,9 @@ public class AppServlet extends HttpServlet {
 
   private List<Record> searchResults(String surname) throws SQLException {
     List<Record> records = new ArrayList<>();
-    try (PreparedStatement stmt = database.prepareStatement(String.format(SEARCH_QUERY, surname))) {
-      stmt.setString(1, surname);
-      ResultSet results = stmt.executeQuery();
+    String query = String.format(SEARCH_QUERY, surname);
+    try (Statement stmt = database.createStatement()) {
+      ResultSet results = stmt.executeQuery(query);
       while (results.next()) {
         Record rec = new Record();
         rec.setSurname(results.getString(2));
