@@ -83,16 +83,14 @@ public class AppServlet extends HttpServlet {
     throws ServletException, IOException {
      // Get form parameters
  
-
-    String userIP = request.getRemoteAddr(); // Use the client's IP address as the key for rate limiting
     String username = request.getParameter("username");
     String password = request.getParameter("password");
     String surname = request.getParameter("surname");
 
-    // Check if username is permanently blocked
+    // Check if user is blocked
     if (!rateLimiter.isAllowed(username)) {
         response.setStatus(403); // HTTP 403 Forbidden
-        response.getWriter().write("Your account has been permanently blocked due to repeated failed login attempts. Please contact the IT Services");
+        response.getWriter().write("Your account has been blocked due to repeated failed login attempts. Please contact the IT Services");
         return;
     }
 
@@ -107,7 +105,7 @@ public class AppServlet extends HttpServlet {
         template.process(model, response.getWriter());
       }
       else {
-        rateLimiter.recordFailure(username);
+        rateLimiter.recordFailure(username); // record invalid attemp
         Template template = fm.getTemplate("invalid.html");
         template.process(null, response.getWriter());
       }
