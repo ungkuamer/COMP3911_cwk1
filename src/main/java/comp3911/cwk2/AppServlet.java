@@ -31,8 +31,8 @@ import main.java.comp3911.cwk2.RateLimiter;
 public class AppServlet extends HttpServlet {
 
   private static final String CONNECTION_URL = "jdbc:sqlite:db.sqlite3";
-  private static final String AUTH_QUERY = "select password from user where username = ?";
-  private static final String SEARCH_QUERY = "select * from patient where surname='%s' collate nocase";
+  private static final String AUTH_QUERY = "SELECT id FROM user WHERE username = 'username' AND password = 'password'";
+  private static final String SEARCH_QUERY = "SELECT * FROM patient WHERE surname = 'surname' COLLATE NOCASE AND gp_id = user_id";
   private final RateLimiter rateLimiter = new RateLimiter();
 
   private final Configuration fm = new Configuration(Configuration.VERSION_2_3_28);
@@ -129,8 +129,9 @@ public class AppServlet extends HttpServlet {
 
 
     try {
-      if (authenticated(username, password)) {
+      if (authenticated(username, password, request)) {
         rateLimiter.resetAttempts(username); // Reset attempts
+        int gpId = (int) request.getSession().getAttribute("gp_id");
         // Get search results and merge with template
         Map<String, Object> model = new HashMap<>();
         model.put("records", searchResults(surname));
@@ -162,12 +163,15 @@ public class AppServlet extends HttpServlet {
     }
   }
 
-  private boolean authenticated(String username, String password) throws SQLException {
+  private boolean authenticated(String username, String password, HttpServletRequest request) throws SQLException {
+    String query = "SELECT id FROM user WHERE username = ? AND password = ?";
     try (PreparedStatement stmt = database.prepareStatement(AUTH_QUERY)) {
       stmt.setString(1, username);
-
+      stmt.setString(2, password);
       try (ResultSet results = stmt.executeQuery()) {
         if (results.next()) {
+          int gpId = results.getInt("id"); // Use 'id' as 'gp_id'
+          request.getSession().setAttribute("gp_id", gpId);
           String hashed = results.getString("password");
           return checkPass(password, hashed);
         }
@@ -176,21 +180,24 @@ public class AppServlet extends HttpServlet {
     }
   }
 
-  private List<Record> searchResults(String surname) throws SQLException {
+  private List<Record> searchResults(String surname, int gpId) throws SQLException {
     List<Record> records = new ArrayList<>();
-    String query = String.format(SEARCH_QUERY, surname);
-    try (Statement stmt = database.createStatement()) {
-      ResultSet results = stmt.executeQuery(query);
-      while (results.next()) {
-        Record rec = new Record();
-        rec.setSurname(results.getString(2));
-        rec.setForename(results.getString(3));
-        rec.setAddress(results.getString(4));
-        rec.setDateOfBirth(results.getString(5));
-        rec.setDoctorId(results.getString(6));
-        rec.setDiagnosis(results.getString(7));
-        records.add(rec);
-      }
+    String query = "SELECT * FROM patient WHERE surname = ? COLLATE NOCASE AND gp_id = ?";
+    try (PreparedStatement stmt = database.prepareStatement(query)) {
+        stmt.setString(1, surname);
+        stmt.setInt(2, gpId);
+        try (ResultSet results = stmt.executeQuery()) {
+            while (results.next()) {
+                Record rec = new Record();
+                rec.setSurname(results.getString("surname"));
+                rec.setForename(results.getString("forename"));
+                rec.setAddress(results.getString("address"));
+                rec.setDateOfBirth(results.getString("born"));
+                rec.setDoctorId(String.valueOf(results.getInt("gp_id")));
+                rec.setDiagnosis(results.getString("treated_for"));
+                records.add(rec);
+            }
+        }
     }
     return records;
   }
