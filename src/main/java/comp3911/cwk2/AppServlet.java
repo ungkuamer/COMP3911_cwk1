@@ -9,6 +9,8 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.sql.PreparedStatement;
+import java.util.*;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -134,7 +136,7 @@ public class AppServlet extends HttpServlet {
         int gpId = (int) request.getSession().getAttribute("gp_id");
         // Get search results and merge with template
         Map<String, Object> model = new HashMap<>();
-        model.put("records", searchResults(surname));
+        model.put("records", searchResults(surname, gpId));
         Template template = fm.getTemplate("details.html");
         template.process(model, response.getWriter());
       }
